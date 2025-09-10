@@ -144,6 +144,12 @@ const App: React.FC = () => {
         if (newRight < imgRight) newRight = imgRight;
         if (newBottom < imgBottom) newBottom = imgBottom;
         
+        // Apply constraints to keep the expandRect within the container
+        if (newTop < 0) newTop = 0;
+        if (newLeft < 0) newLeft = 0;
+        if (newRight > containerRect.width) newRight = containerRect.width;
+        if (newBottom > containerRect.height) newBottom = containerRect.height;
+
         setExpandRect({
           top: newTop,
           left: newLeft,
@@ -606,45 +612,85 @@ const App: React.FC = () => {
               </ReactCrop>
             ) : imageDisplay }
 
-            {activeTab === 'expand' && expandRect && (
-              <div 
-                className="absolute border-2 border-dashed border-blue-400 pointer-events-none"
-                style={{
-                  top: expandRect.top,
-                  left: expandRect.left,
-                  width: expandRect.width,
-                  height: expandRect.height,
-                }}
-              >
-                {['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'].map(handle => {
-                  const getHandleStyle = () => {
-                    const style: React.CSSProperties = { position: 'absolute' };
-                    if (handle.includes('n')) style.top = -6;
-                    if (handle.includes('s')) style.bottom = -6;
-                    if (handle.includes('w')) style.left = -6;
-                    if (handle.includes('e')) style.right = -6;
-                    if (handle === 'n' || handle === 's') { style.left = '50%'; style.transform = 'translateX(-50%)'; }
-                    if (handle === 'w' || handle === 'e') { style.top = '50%'; style.transform = 'translateY(-50%)'; }
-                    return style;
-                  }
-                  const getHandleCursor = () => {
-                    if (handle === 'n' || handle === 's') return 'handle-cursor-ns';
-                    if (handle === 'e' || handle === 'w') return 'handle-cursor-ew';
-                    if (handle === 'nw' || handle === 'se') return 'handle-cursor-nwse';
-                    if (handle === 'ne' || handle === 'sw') return 'handle-cursor-nesw';
-                    return '';
-                  }
-                  return (
-                    <div
-                      key={handle}
-                      onMouseDown={(e) => handleExpandMouseDown(e, handle)}
-                      className={`w-3 h-3 bg-white rounded-full pointer-events-auto border-2 border-blue-500 shadow-lg ${getHandleCursor()}`}
-                      style={getHandleStyle()}
-                    />
-                  );
-                })}
-              </div>
-            )}
+            {activeTab === 'expand' && expandRect && imgRef.current && imageContainerRef.current && (() => {
+              const displayedImageRect = imgRef.current.getBoundingClientRect();
+              const containerRect = imageContainerRef.current.getBoundingClientRect();
+
+              return (
+                <div
+                  className="absolute pointer-events-none"
+                  style={{
+                    top: expandRect.top,
+                    left: expandRect.left,
+                    width: expandRect.width,
+                    height: expandRect.height,
+                  }}
+                >
+                  {/* Overlays to create the "cutout" effect */}
+                  {(() => {
+                    const imgTop = displayedImageRect.top - containerRect.top;
+                    const imgLeft = displayedImageRect.left - containerRect.left;
+
+                    const relativeImgTop = imgTop - expandRect.top;
+                    const relativeImgLeft = imgLeft - expandRect.left;
+
+                    const overlayStyle: React.CSSProperties = {
+                      position: 'absolute',
+                      backgroundColor: 'rgba(26, 32, 44, 0.7)',
+                      backgroundImage: 'repeating-conic-gradient(rgba(255,255,255,0.05) 0% 25%, transparent 0% 50%)',
+                      backgroundSize: '16px 16px',
+                    };
+
+                    const overlays = [
+                      // Top
+                      { key: 'top', top: 0, left: 0, width: '100%', height: relativeImgTop },
+                      // Bottom
+                      { key: 'bottom', top: relativeImgTop + displayedImageRect.height, left: 0, width: '100%', height: expandRect.height - (relativeImgTop + displayedImageRect.height) },
+                      // Left
+                      { key: 'left', top: relativeImgTop, left: 0, width: relativeImgLeft, height: displayedImageRect.height },
+                      // Right
+                      { key: 'right', top: relativeImgTop, left: relativeImgLeft + displayedImageRect.width, width: expandRect.width - (relativeImgLeft + displayedImageRect.width), height: displayedImageRect.height },
+                    ];
+
+                    return overlays.map(o => (
+                      <div key={o.key} style={{ ...overlayStyle, ...o }} />
+                    ));
+                  })()}
+
+                  {/* Dashed border */}
+                  <div className="absolute inset-0 border-2 border-dashed border-blue-400" />
+
+                  {/* Handles */}
+                  {['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'].map(handle => {
+                    const getHandleStyle = (): React.CSSProperties => {
+                      const style: React.CSSProperties = { position: 'absolute', pointerEvents: 'auto' };
+                      if (handle.includes('n')) style.top = -8;
+                      if (handle.includes('s')) style.bottom = -8;
+                      if (handle.includes('w')) style.left = -8;
+                      if (handle.includes('e')) style.right = -8;
+                      if (handle === 'n' || handle === 's') { style.left = '50%'; style.transform = 'translateX(-50%)'; }
+                      if (handle === 'w' || handle === 'e') { style.top = '50%'; style.transform = 'translateY(-50%)'; }
+                      return style;
+                    };
+                    const getHandleCursor = () => {
+                      if (handle === 'n' || handle === 's') return 'cursor-ns-resize';
+                      if (handle === 'e' || handle === 'w') return 'cursor-ew-resize';
+                      if (handle === 'nw' || handle === 'se') return 'cursor-nwse-resize';
+                      if (handle === 'ne' || handle === 'sw') return 'cursor-nesw-resize';
+                      return '';
+                    };
+                    return (
+                      <div
+                        key={handle}
+                        onMouseDown={(e) => handleExpandMouseDown(e, handle)}
+                        className={`w-4 h-4 bg-white rounded-full border-2 border-blue-500 shadow-lg ${getHandleCursor()}`}
+                        style={getHandleStyle()}
+                      />
+                    );
+                  })}
+                </div>
+              );
+            })()}
         </div>
         
         <div className="w-full bg-gray-800/80 border border-gray-700/80 rounded-lg p-2 flex items-center justify-center gap-2 backdrop-blur-sm flex-wrap sm:flex-nowrap">
